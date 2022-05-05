@@ -3,6 +3,8 @@
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <chrono>
+#include <range/v3/all.hpp>
 #include "ip_tools.h"
 
 ip_addr_str_t split(const std::string &str, char d)
@@ -55,78 +57,72 @@ bool check_ip(const uint8_t* ip_array, uint8_t val, Types ... args)
     return (*ip_array == val) && check_ip(ip_array + 1, args...);
 }
 
-int main()
+uint64_t time_ms() {
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
+
+int main(int argc, char** argv)
 {
     try
     {
         // 1. Read IPs from source
         ip_pool_t ip_pool_str;
-        //std::string file_name("/media/glaugrub/Data/git/otus-homeworks/otus-2.0-homework-02/ip_filter.tsv");
-        //read_from_file(file_name, ip_pool_str);
-        read_from_console(ip_pool_str);
-
-        // 2. Convert literal IPs to numerical indexes for easy sorting
-        std::vector<index_t> ip_index_pool;
-        ip_index_pool.reserve(ip_pool_str.size());
-
-        ip_addr_num_t ip_num = {};
-
-        for (auto& ip_str : ip_pool_str)
+        if (argc == 1)
         {
-            get_numerical_ip(ip_str, ip_num);
-            ip_index_pool.push_back(generate_index(ip_num));
+            read_from_console(ip_pool_str);
+        }
+        else
+        {
+            std::string file_name("/media/glaugrub/Data/git/otus-homeworks/otus-2.0-homework-02/ip_filter.tsv");
+            if (argc == 2)
+            {
+                file_name = argv[1];
+            }
+            read_from_file(file_name, ip_pool_str);
         }
 
-        // 3. Sort indexes
-        std::sort(ip_index_pool.begin(), ip_index_pool.end());
+        const uint64_t start_ms = time_ms();
 
-        // 4. Convert indexes to numerical IPs
         std::vector<ip_addr_num_t> ip_pool_num;
         ip_pool_num.reserve(ip_pool_str.size());
 
-        for (auto ip_idx : ip_index_pool)
+        ip_addr_num_t ip_num;
+
+        // 2. Convert literal IPs to numerical IPs
+        for (auto& ip_str : ip_pool_str)
         {
-            generate_ip(ip_idx, ip_num);
+            get_numerical_ip(ip_str, ip_num);
             ip_pool_num.push_back(ip_num);
         }
 
-        // 5. Print all IPs reverse order
-        for (auto ip = ip_pool_num.crbegin(); ip != ip_pool_num.crend(); ip++)
-        {
-            print_ip(*ip);
-        }
+        // 3. Do reverse lexicoprapthical sort using ranges. Print all IPs.
+        ranges::sort(ip_pool_num, ranges::lexicographical_compare);
+        ranges::reverse(ip_pool_num);
+        ranges::for_each(ip_pool_num, print_ip);
 
-        // 6. Print IPs starting from 1
-        for (auto ip = ip_pool_num.crbegin(); ip != ip_pool_num.crend(); ip++)
-        {
-            if (check_ip(&((*ip).at(0)), 1))
-            {
-                print_ip(*ip);
-            }
-        }
 
-        // 7. Print IPs starting from 46, 70
-        for (auto ip = ip_pool_num.crbegin(); ip != ip_pool_num.crend(); ip++)
-        {
-            if (check_ip(&((*ip).at(0)), 46, 70))
-            {
-                print_ip(*ip);
-            }
-        }
+        // 4. Print IPs starting from 1
+        uint8_t first = 1;
+        uint8_t second = 0;
 
-        // 8. Print IPs having 46
-        const uint8_t val_to_check = 46;
+        auto check_first = [first](ip_addr_num_t& ip){return ip.at(0) == first;};
+        ranges::for_each(ip_pool_num | ranges::view::filter(check_first), print_ip);
 
-        auto test_ip = [val_to_check](const ip_addr_num_t& ip) -> bool {
-            return std::find(ip.cbegin(), ip.cend(), val_to_check) != ip.cend();
-        };
+        first = 46;
+        second = 70;
 
-        auto ip = ip_pool_num.rbegin();
+        // 5. Print IPs starting from 46, 70
+        auto check_first_and_second = [first, second](ip_addr_num_t& ip){return ip.at(0) == first && ip.at(1) == second;};
+        ranges::for_each(ip_pool_num | ranges::view::filter(check_first_and_second), print_ip);
 
-        while ((ip = std::find_if(ip, ip_pool_num.rend(), test_ip)) != ip_pool_num.rend())
-        {
-            print_ip(*ip++);
-        }
+        // 6. Print IPs having 46
+        auto check_any = [first](ip_addr_num_t& ip){return ip.at(0) == first || ip.at(1) == first || ip.at(2) == first || ip.at(3) == first;};
+        ranges::for_each(ip_pool_num | ranges::view::filter(check_any), print_ip);
+
+        const uint64_t end_ms = time_ms();
+
+        std::cout << "Duration in ms is " << end_ms - start_ms << std::endl;
     }
     catch(const std::exception &e)
     {
